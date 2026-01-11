@@ -3,29 +3,44 @@ import { useInventory } from '@/context/InventoryContext';
 import { Layout } from '@/components/layout/Layout';
 import { DeviceTable } from '@/components/devices/DeviceTable';
 import { DeviceModal } from '@/components/devices/DeviceModal';
+import { LabelFilter } from '@/components/devices/LabelFilter';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Plus, Search, Server, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Server, AlertCircle, CheckCircle, FilterX } from 'lucide-react';
 
 const Index = () => {
-  const { devices } = useInventory();
-  const [search, setSearch] = useState('');
+  const { devices, globalLabels } = useInventory();
+  const [filters, setFilters] = useState<Record<string, string | null>>({});
   const [modalOpen, setModalOpen] = useState(false);
 
+  // Get all unique values for each label
+  const labelValues = useMemo(() => {
+    const values: Record<string, string[]> = {};
+    globalLabels.forEach((label) => {
+      values[label.key] = devices
+        .map((device) => device.labels[label.key])
+        .filter(Boolean);
+    });
+    return values;
+  }, [devices, globalLabels]);
+
   const filteredDevices = useMemo(() => {
-    if (!search.trim()) return devices;
-    
-    const query = search.toLowerCase();
-    return devices.filter(
-      (device) =>
-        device.name.toLowerCase().includes(query) ||
-        device.ip.includes(query) ||
-        Object.entries(device.labels).some(
-          ([key, value]) =>
-            key.toLowerCase().includes(query) || value.toLowerCase().includes(query)
-        )
-    );
-  }, [devices, search]);
+    return devices.filter((device) => {
+      return Object.entries(filters).every(([key, value]) => {
+        if (!value) return true;
+        return device.labels[key] === value;
+      });
+    });
+  }, [devices, filters]);
+
+  const handleFilterChange = (labelKey: string, value: string | null) => {
+    setFilters((prev) => ({ ...prev, [labelKey]: value }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({});
+  };
+
+  const hasActiveFilters = Object.values(filters).some(Boolean);
 
   const upCount = devices.filter((d) => d.status === 'up').length;
   const downCount = devices.filter((d) => d.status === 'down').length;
@@ -84,15 +99,33 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, IP, or label..."
-            className="pl-10"
-          />
+        {/* Label Filters */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          {globalLabels.map((label) => (
+            <LabelFilter
+              key={label.id}
+              labelKey={label.key}
+              values={labelValues[label.key] || []}
+              selectedValue={filters[label.key] || null}
+              onSelect={(value) => handleFilterChange(label.key, value)}
+            />
+          ))}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFilters}
+              className="text-muted-foreground"
+            >
+              <FilterX className="w-4 h-4 mr-1" />
+              Clear filters
+            </Button>
+          )}
+          {filteredDevices.length !== devices.length && (
+            <span className="text-sm text-muted-foreground ml-auto">
+              Showing {filteredDevices.length} of {devices.length} devices
+            </span>
+          )}
         </div>
 
         {/* Table */}
